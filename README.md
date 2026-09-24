@@ -2,18 +2,18 @@
 
 Shopify theme-tools 供应链 RCE 概念验证：主题仓库内被 commit 的 `node_modules/theme-check-*` 包会在**无任何 `.theme-check.yml`** 的情况下被 `loadConfig()` 自动 `require()` 执行。
 
-**载荷无害**：两个恶意包只做一件事 — 向 `%TEMP%\theme_rce_marker_1337.txt` 追加一行标记并打印 PWN，用于证明「任意代码执行」这一事实。仅用于 Shopify HackerOne 漏洞报告的复现材料。
+**载荷无害**：两个恶意包只做两件事 — ① 向系统临时目录的 `theme_rce_marker_1337.txt` 追加一行标记（文件证据）；② 弹出系统计算器（macOS 弹 Calculator.app / Windows 弹 calc，代码执行的可视化证明）。仅用于 Shopify HackerOne 漏洞报告的复现材料。
 
 ## 另一台电脑上的复现步骤
 
-前置：Node.js ≥ 18、git。
+前置：Node.js ≥ 18、git。macOS / Windows / Linux 命令通用（差异处已标注）。
 
-```powershell
+```bash
 # 1) 克隆并构建 theme-tools（官方仓库）
 git clone https://github.com/Shopify/theme-tools.git
 cd theme-tools
 npx pnpm@10.28.0 install
-npx pnpm@10.28.0 install --ignore-scripts   # keytar/playwright 报错可忽略
+npx pnpm@10.28.0 install --ignore-scripts   # keytar/playwright 原生构建报错可忽略
 npx pnpm@10.28.0 --filter @shopify/liquid-html-parser run build:ts
 npx pnpm@10.28.0 --filter @shopify/theme-check-common run build:ts
 npx pnpm@10.28.0 --filter @shopify/theme-graph run build:ts
@@ -31,10 +31,14 @@ npx -y tsx@4.19.2 run-poc.ts <theme-tools 仓库根的绝对路径>
 
 ## 预期结果
 
-1. PWN 行落在 `[driver] >>> calling public loadConfig()` 与 `<<< returned` 之间（证明执行发生在工具加载配置过程中）
-2. Scenario A（malicious-theme 自带恶意包）与 Scenario B（plain-theme 干净主题被父目录向上命中）都触发
-3. `[verdict] RCE = CONFIRMED`
-4. 标记文件 `%TEMP%\theme_rce_marker_1337.txt` 存在，`__filename` 指向恶意包文件
+1. **系统计算器自动弹出**（macOS：Calculator.app；Windows：calc）— 载荷在 `loadConfig()` 执行过程中被 require 的可视化证明
+2. PWN 行落在 `[driver] >>> calling public loadConfig()` 与 `<<< returned` 之间（证明执行发生在工具加载配置过程中，不是驱动脚本自己 import）
+3. Scenario A（malicious-theme 自带恶意包）与 Scenario B（plain-theme 干净主题被父目录向上命中）都触发
+4. `[verdict] RCE = CONFIRMED`
+5. 标记文件（文件证据）：
+   - macOS / Linux：`echo $TMPDIR` 看路径，`cat "$TMPDIR/theme_rce_marker_1337.txt"`
+   - Windows：`Get-Content "$env:TEMP\theme_rce_marker_1337.txt"`
+   - 内容中 `__filename` 指向恶意包文件 = 「谁执行的」铁证
 
 ## 目录结构
 
@@ -50,6 +54,11 @@ poc\
 
 ## 清理
 
+```bash
+# macOS / Linux
+rm "$TMPDIR/theme_rce_marker_1337.txt"
+```
 ```powershell
+# Windows
 Remove-Item "$env:TEMP\theme_rce_marker_1337.txt"
 ```
